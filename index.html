@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day-Before Menu & Food Production</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1d2320;--mut:#667068;--line:#d9d9d2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171a18;--card:#212623;--ink:#ecefeb;--mut:#a0a89f;--line:#3a413c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "Segoe UI",system-ui,Arial,sans-serif;padding:14px}
+h1{font-size:1.35rem;margin:0 0 2px}.sub{color:var(--mut);margin:0 0 12px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:end;background:var(--card);border:1px solid var(--line);padding:12px;border-radius:6px;margin-bottom:14px}
+label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mut);gap:3px}
+input,textarea,button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:4px;padding:5px 7px}
+button{cursor:pointer;background:var(--ink);color:var(--bg);border-color:var(--ink);padding:7px 14px}
+button.ghost{background:none;color:var(--ink)}
+.fp{font-weight:600;font-size:1.05rem}
+section{background:var(--card);border:1px solid var(--line);border-left:8px solid var(--c);border-radius:6px;margin-bottom:16px;overflow:hidden}
+.hd{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 12px;background:color-mix(in srgb,var(--c) 14%,var(--card))}
+.hd h2{margin:0;font-size:1.1rem;flex:1;color:var(--c);filter:brightness(.85)}
+.hd input[type=color]{padding:0;width:38px;height:28px;border:none;background:none}
+.note{padding:6px 12px;color:var(--mut);font-size:.85rem;border-bottom:1px solid var(--line)}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:860px}
+th,td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+th{font-size:.8rem;color:var(--mut);font-weight:600}
+td textarea{width:100%;min-width:260px;min-height:64px;resize:vertical}
+td input{width:78px}td input.t{width:110px}td input.u{width:60px}
+.a{font-weight:600;white-space:nowrap}.neg{color:#c0392b}
+.up{flex-direction:row;align-items:center;gap:6px;color:var(--ink)}.up input{max-width:210px;font-size:.8rem}.up select{padding:3px}.hd button{padding:4px 10px;font-size:.8rem}
+.tb{width:170px}.outl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.outl .on{width:130px}.outl button{padding:3px 8px;font-size:.8rem}
+#saved{display:flex;flex-wrap:wrap;gap:8px}#msg{color:var(--mut);align-self:center}
+</style>
+</head>
+<body>
+<h1>Day-before menu & food production</h1>
+<p class="sub" id="plan"></p>
+<div class="bar">
+  <label>Menu date<input type="date" id="date"></label>
+  <span>Production ID<br><span class="fp" id="fpid"></span></span>
+  <button id="save">Save production</button>
+  <button id="docx">Export next-day sheet (Word)</button>
+  <button id="tt">Export Tasting Sheet (Word)</button>
+  <button id="xd">Export Excel – Day</button><button id="xm">Export Excel – Month</button><button id="xy">Export Excel – Year</button>
+  <button class="ghost" id="reset">Reset to source menu</button>
+  <span id="msg"></span>
+</div>
+<div id="app"></div>
+<h3>Saved production records</h3>
+<div id="saved"></div>
+ 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const DAY=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const DH=[
+["Rice Rava Upma, Peanut Chutney","Thotakura Toor dal, Aloo mattar semi gravy Punjabi style, Roti, Steamed rice, Butter Milk, pickle","Yellow Moong dal Tadka, Touri Sabji, Roti, Steamed Rice, pickle"],
+["Uttappam, Peanut Chutney","Green moong dal Punjabi style, steamed rice, Gajjar Gobi Mattar sabji, roti, pickle, Butter Milk","Tamarind Rasam, Lauki sabji, Steamed Rice, Roti, Pickle"],
+["Pongal, Sambar","Plain Kadhi, Baingan Masala, Roti, Steamed rice, Buttermilk, pickle","Split masoor dal, Cabbage Aloo Mattar sabji, Steamed rice, Roti, Pickle"],
+["Poha, Sambar","Aloo Soya bean, Mix Dal, Roti, Steamed Rice, Butter milk, Pickle","Tamarind Rasam, Aloo tomato sabji, Roti, Steamed Rice, Pickle"],
+["Idly, Sambar (Handwritten note: Poori / less rice idly — unclear)","Jeera Rice, Chole/Rajma Masala, Raita or Buttermilk, pickle","Split masoor dal Tadka, Aloo Baigan Curry, Roti, Steamed rice, pickle"],
+["Rice Rava Upma, Sambar","Channa dal masala, Aloo Dondakai masala, Steamed rice, roti, Butter milk, pickle","Yellow Moong dal Tadka, Aloo Soya bean, Roti, Steamed rice, Pickle"],
+["Pongal, Sambar","Hyderabadi Veg Biryani, Aloo Subzi, Roti, Buttermilk, Pickle","Tamarind Rasam, Pumpkin Subzi, Roti, steamed rice, pickle"]];
+const KCC=[
+["Idly & Wada, Allam Chutney, Sambar, Palli Coffee/Milk","Fruit + Roasted Chana","Rice, Roti, Bhendi Fry, Thotakura Pappu, Sorakai Chutney, Curd & Papad, Pacchipulusu, Podina Rice or pakoda kadhi, Onion Slice (3kg)","Pungulu, Tomato Chutney, Vanila Mikshake, for Staff (Tea-50nos)","Rice, roti, Chamagadda Fry, Brinjal Tomato Curry, Sambar, Curd, Gongura Pickle, Sweet Pongal or Pizza French Fries, Mionese, chilli flakes"],
+["Masala Dosa, Palli Chutney, Samabr or Puri aloo/Chole Curry, Tea/Milk","Banana & Murukula or Oat Cookies (4nos)","White Rice, Roti, Vankaya Masala Curry, Palakura Pappu, Rasam, Gongura Chutney, Curd, Veg Pulao or Paneer biryani, Ratitha","Onion Pakoda, Watermelon Juice, for Staff (Tea-50nos)","Rice, Chapati, Tomato Curry or Shimla Mirchi Meal Maker Fry, Sambar with Drum Sticks, Tomato Pickle, Curd"],
+["Coffee/Milk, Aloo Paratha, Curd Butter, Lemon Pickle","Seasonal Fruit & Peanut Chikki","Rice, Roti, Dondakai Fry, Gongura Pappu, Beerakaya Chutney, Curd & Papad, Sambar, Onion Slice (3kg)","Masala Vada (Big Size 2 Piece) or Mirchi Bajji, Mosambi Juice, for Staff (Tea-50nos)","Rice, Roti, Rasam, Aloo Kurma, Mango Pickle, Semiya Payasam, Curd, Veg Biryani"],
+["Uttapam, Allam Chutney, Sambar, Palli Chutney, Tea/milk","Seasonal Fruit & Banana Chips","White Rice, Roti, Pulihora rice, Dosakaya Pappu, Drum Stick Curry, Curd, Mango Pickle","Grilled Sandwich or Pastry, Strawberry Lassi, for Staff (Tea-50nos)","Fried Rice / Noodles, Gobi Manchuria, Rice, Dal, Curd (source text partly unclear)"],
+["Pongal, Vada, Palli Chutney, Sambar, Coffee/Milk","Cup Cake & Masala Chips","White Rice, Roti, Birakaya Pachi Changa Pappu Curry, Tomato Pappu, Pudina Chutney, Curd & Papad, Rasam","Bhattani Chat (100 g), Lemonade, for Staff (Tea-50nos)","Rice, Sambar, Perugu Charu, Mushroom Masala, Flav Rice, Curd, Tomato Pickle, Rasagulla"],
+["Pesarattu + Upma, Tomato Chutney, Palli Chutney, Sambar or Bambino and cereal, Tea/Milk","Seasonal Fruit & Fruit Cake","White Rice, Roti, Tomato Rice, Crispy Soya Fry, Bendi Pulusu, Mentikura Pappu, Papad, Curd, Onion Slice (3kg)","Samosa (150 g), Fresh juice, for Staff (Tea-50nos)","Rice, Chapati, Rasam, Bhindi do pyaza, Cabbage GS or Onion Pakodi, Rasam, Curd, Mango Pickle"],
+["Jumbo Poori Chole or Masala Dosa, Palli Chutney, Tea/Milk, Milk Bread (50%), Jam, Butter","Chocolate Coated biscuit (2nos) & Seasonal Fruit","Rice, Roti, Beetroot Bhaji or Goruchikkudu Pakodi Curry, Sambar, Vankai tomato Curry or Rajma/Chole, Curd, Coconut Chutney","Veg Spring roll, Sweet Lassi or Cold Badam Milk, for Staff (Tea-50nos)","Basmathi Veg Biryani, Paneer Butter Masala, Raita, Sweet (Gulab Jamun/laddu/Kalakand), Onion Slice with Lemon, Rumali roti or Roti"]];
+const SCH1=[
+["Vada + Veg Rawa Upma + Sambhar + Coconut Chutney + Moong Sprouts","Seasonal Fruit + Banana Chips","Corn Salad + Roti + Rice + Mix Veg Sabji (No Aloo) + Palak Moong Dal + Rasam + Chutney + Butter Milk + Gulab Jamun","Veg Puff x 2 + Mosambi Juice","Thin Sliced Salad + Rice + Roti + Sabji Meloni Channa Dal Tadka + Millet Curd Rice + Pickle"],
+["Poha + Sev + Sambhar + Curd + Channa Sundal","Banana + Mixture","Sprouts Salad + Roti + Rice + Lemon Rice + Beans n Carrot Porial + Tomato Dal + Rasam + Chutney + Butter Milk","Matar Kachori + Chutney + Water Melon Juice","Rice + Roti + Masoor Whole Dal + Methi Matar Aloo (30-40-30) + Curd + Pickle"],
+["Uttapam + Coconut Chutney + Sambhar + Moong Sprouts","Seasonal Fruit + Croissant","Thin Slices Salad + Roti + Jeera Rice + Rice + Lobiya + Parwal Aloo (70-30) + Rasam + Chutney + Butter Milk","Samosa + Watermelon Juice","Wheat Pav Bhaji + Fried Chillies + Cut Onions + Rice + Moong Dal Fry + Curd + Chutney Podi"],
+["Idli + Peanut Chutney + Sambhar + Moong Sprouts","Banana + Namak Paare","Pasta Salad + Roti + Rice + Matar Paneer + Moong Whole Dal + Rasam + Millet Curd Rice + Chutney + Butter Milk","Sandwich (Cucumber, Tomato Slices + Green Chutney) + Vanila Milk Shake","Roti + Veg Manchurian + Fried Rice + Rice + Mung Dal + Curd + Pickle"],
+["Methi Fulka + Curd + Tomato Chutney + Channa Sundal","Seasonal Fruit + Oats Cookies (Big) x 2","Roti + Bisibele Bhat + Rice + Bhagare Baingan (Green) + Kaara Boondi + Raita + Panchratan Dal + Chutney + Butter Milk","Dhokla + Green Chutney + Mosambi Juice","Roti + Rice + Tomato Dal + Chettinad Veg + Curd + Pickle"],
+["Cereal + Milk + Mix Veg Seviyan Upma + Sambhar + Moong Sprouts + Peanut Chutney","Banana + Chocolate Coated Biscuits","Thin Slices Salad + Rice + Roti + Jeera Rice + Moong Whole Dal + Gobhi Masala (No Aloo) + Rasam + Chutney + Butter Milk","Dhabeli + Lemonade","Sprouts Salad + Roti + Tomato Rice + Rice + Mango Dal + Tori Matar + Curd + Pickle"],
+["Dosa + Aloo Masala + Coconut Chutney + Sambhar + Moong Sprouts + Multigrain Bread Toast + Cheese Slices + Butter + Jam + Peri Peri Masala","Musk/Water Melon + Dahi Vada","Corn Salad + Roti + Rice + Mixed Raita + Bhindi Masala (No Aloo) + Chhole + Rasam + Chutney + Butter Milk","Pineapple Pastry + Chocolate Milkshake","Roti + Jeera Aloo + Rice + Palak Dal + Curd + Ketchup + Pickle"]];
+const P="1st session (6:30am)\nBanana\nNote: Depends on the strength of the kids",N="Not specified in source",L11="2nd session (11:00am)\n",LEM=L11+"Lemonade (20 g sugar in 400 ml water)",SAL="Salad (carrot, cucumber, onion, lemon)",M="Milk (250 ml)";
+const HI=[
+[P,["Mixed cut fruits (watermelon, pineapple, muskmelon)","Carrot-beetroot uttapam / set dosa","Allam chutney","Peanut chutney","Sambar",M],LEM,[SAL,"Rice","Herb rice","Chapati","Nawabi paneer","Dal tadka","Beans and carrot sabzi","Curd / buttermilk"],["Veg burger","Ragi milkshake (add ragi, milk and sugar only)"],["Green vegetable toss","Chapati","Rice","Chole masala","Veg sambar (add drumstick, carrot, ladies' finger, potato, beans)","Curd",M]],
+[P,["Pomegranate cut into half","Soft ragi idli","Vada","Sambar","Peanut chutney","Tomato chutney",M],L11+"Mosambi/orange juice",["Microgreen salad","Rice (5 pax)","Veg fried rice","Paneer manchurian","Chapati","Yellow dal","Ridge gourd masala","Raita / buttermilk"],["Sweetcorn cheese sandwich (not grilled)","Nuts smoothie (milk, almonds, cashew, dates)"],["Green gram sprouts (boiled) with pomegranate","Rice (5 pax)","Chapati","Soya kheema","Moong dal palak","Curd rice with pomegranate",M]],
+[P,["Orange","Masala dosa","Potato bhaji","Peanut chutney","Tomato chutney","Sambar",M],LEM,[SAL,"Rice (5 pax)","Chapati","Veg kofta","Thick dal","Ivy gourd fry","Curd / buttermilk","Sweet"],["Sweet potato cutlet (pan fried)","Mint chutney","Fruit custard (apple, banana, pomegranate)"],["Broccoli-carrot-garlic toss","Rice","Chapati","Matar pulao","Panchmel dal","Mock meat dry","Curd",M]],
+[P,["Mixed cut fruits (pineapple, guava, watermelon)","Boiled green gram sprouts","Broken wheat upma","Peanut chutney","Tomato chutney","Chocolate muesli",M],LEM,[SAL,"Rice (5 pax)","Vegetable biriyani","Chapati","Rajma masala","Thick dal","Papad","Raita"],["Chocolate protein bar","Oats banana milkshake"],["Penne pasta salad (add vegetables like carrot, bell peppers)","Rice","Chapati","Paneer lababdar","Rasam","Curd",M]],
+[P,["Mixed cut fruits (watermelon, pineapple, apple)","Veg paratha","Curd (without tadka)","Coriander-mint chutney",M],L11+"Watermelon juice",[SAL,"Rice","Chapati","Paneer tikka masala","Vegetable sambar","Curd"],["Peanut butter bread","Classic chocolate milkshake"],["Beetroot, carrot, onion, tomato salad","Rice","Methi-sweetcorn pulao","Chapati","Drumstick leaves with masoor dal","Tofu matar masala","Curd",M]],
+[P,["Papaya","Masala oats upma (any other option)","Peanut chutney","Allam chutney","Sambar",M],LEM,[SAL,"Rice (5 pax)","Chapati","Soya chunks and mushroom pepper fry","Drumstick sambar","Cabbage sabzi","Curd"],["Boiled sweetcorn-veg chaat","Peanut butter blast milkshake"],["Cucumber-carrot salad","Rice (5 pax)","Chapati","Veg Hakka noodles","Dal","Paneer chilli","Curd",M]],
+[N,["Dragon fruit + kiwi","Veg poha","Peanut chutney","Sambar","Chocos",M,"Monthly twice: poori + chole masala (2nd and 4th Sunday)"],N,[SAL,"Rice (5 pax)","Chapati","Palak paneer","Drumstick curry","Curd"],N,["Chickpea and corn toss","Rice (5 pax)","Mushroom fried rice","Chapati","Dal","Ladies finger sabzi","Curd",M]]
+].map(r=>r.map(x=>Array.isArray(x)?x.join("\n"):x));
+const HA=[
+["Idly & Wada, Tomato Chutney, Sambar, Palli chutney, Coffee (50%) & Tea (50%)","Rice, Roti, Bhindi Fry, Chole Masala, Thotakura Appu, Curd & Papad, Sorakaya Chutney, Tomato Rasam","Punngulu, Tomato Chutney, Tea","Rice, Roti, Aloo Korma, Bitter gourd Fry, Sambar, Curd, Rawa Keshari"],
+["Masala Dosa, Palli Chutney, Sambhar, Tea (50%) & Coffee (50%)","White Rice, Roti, Vankaya Masala Curry, Veg Pulao, Palakura Papu, Beerakaya Chutney, Curd, Pepper Rasam","Spring Roll, Tea","Rice, Chapati, Mixed veg Curry (without tomato), Sambar, Papad, Curd, Tomato Pickle"],
+["Hot Pongal & Vada, Sambar, Palli chutney, Coffee (50%) & Milk (50%)","Rice, Dondakaya Fry, Chukakura Pappu, Gongura Chutney, Curd & Papad, Drumstick Sambar, Ghee-2kg","French Fries-80gms/Veg Puff, Tea","Rice, Roti, Paneer Curry, Yellow Moong Dal, Mango Pickle, Semiya Payasam, Curd"],
+["Aloo Paratha, Curd, Lemon Pickle, Coffee (50%) & Milk (50%)","White Rice, Roti, Tamarind rice, Sorakaya Papu, Cabbage Chenaga pappu Curry (Dry), Curd","Grilled Sandwich, Coffee","Rice, Roti, Jeera rice, Rajam, Pappucharu, Curd"],
+["Mysore Bajji with Palli Chutney, Tomato Chutney, Coffee (50%) & Tea (50%)","Roti, White Rice, Tomato rice, Milamaker Tomato Curry, Dondakaya Chutney, Curd & Papad, Garlic Rasam, Salad (Cucumber & carrot)","Manchuria (10 Pieces), Tea","Rice, Chapati, Tomato Pappu, Mushroom Curry, Cabbage 65, Rasam, Pickle"],
+["Pesarattu + Semiya Upma, Tomato Chutney, Palli Chutney, Coffee (50%) & Tea (50%)","White Rice, Roti, Crispy Aloo Fry, Bhindi kayla Pusalu, Menthikura Pappu, Papad, Curd","Fruit Cake (100 g), Ragi Java add Jaggery","Veg Fried rice, Hot Garlic Sauce, rice, Tomato Fry Curry, Sambar, Majjiga pulusu (Onion and Tadka)"],
+["Jumbo Poori, Bhaji/Chole, Tea (50%) & Milk (50%)","Roti, Rice, Goruchikkudu Fry, Mixed veg curry, Sorakaya Chutney, Curd, Dal Tadka, Papad","Cut Fruits, Badam Milk Hot","Basamati Veg Biryani, Paneer Butter Masala, Raita, Sweet (Gulab Jamun or Rasugula), Onion Slice with lemon"]];
+const sch=(w,d)=>w!==0?Array(7).fill(""):["Milk with Bournvita or Horlicks or Boost",...SCH1[d],"Night time milk"];
+const DEPTS=[
+{id:"dh",name:"Dining Hall",c:"#2f6f4f",meals:["Breakfast","Lunch","Dinner"],get:(w,d)=>DH[d],note:"Friday breakfast has a handwritten note (Poori / less rice idly) that is unclear — confirm."},
+{id:"sc",name:"School",c:"#2a5d9f",meals:["Early morning milk","Breakfast","Morning snack","Lunch","Evening snack","Dinner","Night milk"],get:sch,note:"Only Week 1 is loaded. Other weeks follow the 4-week rotation (Week 1 starts Mon 1 Jun 2026) — confirm it continues past Aug 2026. Younger kids (Pre KG–Grade 2): same dal and curry with no spice, grated salad, softer rice. Pickle or peanut chutney powder at lunch and dinner."},
+{id:"kc",name:"KCC",c:"#c0612b",meals:["Breakfast (8–8:30 am)","Morning snacks","Lunch (12:30–2:30 pm)","Snacks (5–5:30 pm)","Dinner (7:30–9 pm)"],get:(w,d)=>KCC[d],note:"Source sheet: KCC MENU (separate from HARI). Thursday dinner is partly unclear."},
+{id:"hi",name:"HISA Mess",c:"#8a3f8f",meals:["Pre-training (6:30 am)","Breakfast","During training (11:00 am)","Lunch","Evening snacks","Dinner"],get:(w,d)=>HI[d],note:"Source: HISA Mess Menu – October. “Rice (5 pax)” is kept as written and not interpreted — confirm its meaning. Sunday pre-training, during-training and evening snacks are not specified in the source. Sunday breakfast: poori + chole masala on the 2nd and 4th Sunday."},
+{id:"ha",name:"HARI University",c:"#b8962e",meals:["Breakfast (8–8:30 am)","Lunch (12:30–2 pm)","Snacks (3:30–4:30 pm)","Dinner (7:30–8:30 pm)"],get:(w,d)=>HA[d],note:"Source: HARI Weekly Menu (Heartfulness Academy of Research and Innovation). Remarks column is empty in the source. Source spellings are kept. Wednesday snack reads French Fries-80gms/Veg Puff and Wednesday lunch lists Ghee-2kg — confirm."}];
+ 
+const $=s=>document.querySelector(s),p2=n=>String(n).padStart(2,"0");
+const ymd=d=>d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
+const LS={get(k,f){try{return JSON.parse(localStorage.getItem(k))||f}catch(e){return f}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
+let colors=LS.get("hm_colors",{}),S={date:"",rows:{},taste:{}};
+ 
+function dow(date){return (new Date(date+"T00:00:00").getDay()+6)%7}
+function week(date){const n=Math.round((new Date(date+"T00:00:00")-new Date("2026-06-01T00:00:00"))/864e5);return (((Math.floor(n/7))%4)+4)%4}
+const UM={};
+function menuFor(D,w,d){
+  const U=LS.get("hm_menus",{})[D.id];let g=null;
+  if(U)g=D.id==="sc"?((U.weeks||{})[w]||U.all):U.grid;
+  const base=D.get(w,d);
+  if(g&&g[d])return D.meals.map((_,i)=>g[d][i]?g[d][i]:(D.id==="sc"&&(i===0||i===D.meals.length-1)?base[i]:""));
+  return base}
+const DK=["mon","tue","wed","thu","fri","sat","sun"];
+const dIdx=s=>{s=String(s==null?"":s).trim().toLowerCase();return DK.findIndex(k=>s.startsWith(k))};
+const nz=s=>String(s==null?"":s).toLowerCase().replace(/\(.*?\)/g,"").replace(/[^a-z]/g,"");
+const tx=v=>String(v==null?"":v).trim();
+function parseMenu(rows,D){
+  const entries=[];
+  const hr=rows.findIndex(r=>r&&r.filter(c=>dIdx(c)>=0).length>=5);
+  if(hr>=0){
+    const cols={};rows[hr].forEach((c,j)=>{const k=dIdx(c);if(k>=0&&cols[k]==null)cols[k]=j});
+    const lc=Math.max(Math.min(...Object.values(cols))-1,0);
+    for(let r=hr+1;r<rows.length;r++){const row=rows[r]||[],lab=tx(row[lc]);if(!lab)continue;
+      const cells=DK.map((_,k)=>cols[k]==null?"":tx(row[cols[k]]));
+      if(cells.every(x=>!x))continue;entries.push({label:lab,cells})}
+  }else{
+    let dc=-1;const nc=Math.max(0,...rows.map(r=>r?r.length:0));
+    for(let j=0;j<nc;j++){if(rows.filter(r=>r&&dIdx(r[j])>=0).length>=5){dc=j;break}}
+    if(dc<0)return null;
+    const fr=rows.findIndex(r=>r&&dIdx(r[dc])>=0);if(fr<1)return null;
+    const dayRows={};for(let r=fr;r<rows.length;r++){const k=dIdx((rows[r]||[])[dc]);if(k>=0&&!dayRows[k])dayRows[k]=rows[r]}
+    (rows[fr-1]||[]).forEach((h,j)=>{if(j===dc||!tx(h))return;
+      const cells=DK.map((_,k)=>dayRows[k]?tx(dayRows[k][j]):"");
+      if(cells.some(x=>x))entries.push({label:tx(h),cells})});
+  }
+  const bases=D.meals.map(nz),map=Array(D.meals.length).fill(-1),used=new Set();
+  const pass=fn=>entries.forEach((e,ei)=>{if(used.has(ei))return;const n=nz(e.label);if(!n)return;
+    const i=bases.findIndex((b,bi)=>map[bi]<0&&fn(n,b));if(i>=0){map[i]=ei;used.add(ei)}});
+  pass((n,b)=>n===b);pass((n,b)=>n.length>=4&&(b.includes(n)||n.includes(b)));
+  const matched=D.meals.filter((_,i)=>map[i]>=0);
+  if(!matched.length)return null;
+  return{grid:DK.map((_,d)=>D.meals.map((_,i)=>map[i]>=0?entries[map[i]].cells[d]:"")),matched,
+    missing:D.meals.filter((_,i)=>map[i]<0),unmatched:entries.filter((_,i)=>!used.has(i)).map(e=>e.label)}
+}
+function csvRows(t){const rows=[];let row=[],cur="",q=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}
+    else if(c==='"')q=true;else if(c===","){row.push(cur);cur=""}
+    else if(c==="\n"||c==="\r"){if(c==="\r"&&t[i+1]==="\n")i++;row.push(cur);rows.push(row);row=[];cur=""}
+    else cur+=c}
+  row.push(cur);rows.push(row);return rows}
+function readFile(file,done){
+  const rd=new FileReader(),csv=/\.csv$/i.test(file.name);
+  rd.onerror=()=>done(null,"The file could not be read.");
+  rd.onload=()=>{try{
+    if(csv&&!window.XLSX)return done([csvRows(rd.result)]);
+    if(!window.XLSX)return done(null,"The spreadsheet reader could not load. Save the file as .csv and upload that instead.");
+    const wb=XLSX.read(rd.result,{type:csv?"string":"array"});
+    done(wb.SheetNames.map(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:""})))
+  }catch(e){done(null,"This file could not be opened. Check that it is a valid .xlsx or .csv file.")}};
+  csv&&!window.XLSX?rd.readAsText(file):(csv?rd.readAsText(file):rd.readAsArrayBuffer(file));
+}
+function syncMenus(D){const g=menuFor(D,week(S.date),dow(S.date));S.rows[D.id].forEach((r,i)=>r.menu=g[i]||"")}
+function uploadMenu(D,file,wk){
+  readFile(file,(sheets,err)=>{
+    if(err){UM[D.id]=err;return render()}
+    let res=null;for(const rows of sheets){res=parseMenu(rows,D);if(res)break}
+    if(!res){UM[D.id]="No menu found in "+file.name+". Use days (Monday–Sunday) across the top with meals down the side, or days down the side with meals across the top.";return render()}
+    const all=LS.get("hm_menus",{}),u=all[D.id]||{name:file.name};
+    u.name=file.name;u.at=new Date().toISOString();
+    if(D.id==="sc"){u.weeks=u.weeks||{};if(wk==="all"){u.all=res.grid}else{u.weeks[+wk]=res.grid}}else u.grid=res.grid;
+    all[D.id]=u;LS.set("hm_menus",all);syncMenus(D);
+    UM[D.id]="Loaded "+file.name+(D.id==="sc"?(wk==="all"?" for all weeks":" for Week "+(+wk+1)):"")+". Matched: "+res.matched.join(", ")+"."+
+      (res.missing.length?" Not found in file: "+res.missing.join(", ")+".":"")+(res.unmatched.length?" Ignored rows/columns: "+res.unmatched.join(", ")+".":"");
+    render()});
+}
+const OUT0=[{id:"o1",name:"School"},{id:"o2",name:"Wellness"},{id:"o3",name:"KG School"},{id:"o4",name:"North School"}];
+const outlets=()=>{const o=LS.get("hm_outlets",OUT0);return Array.isArray(o)&&o.length?o:OUT0};
+const totPx=r=>{const px=r.px||{},O=outlets();return O.some(o=>num(px[o.id])!==null)?String(O.reduce((s,o)=>s+(num(px[o.id])||0),0)):""};
+function blank(date){const r={},d=dow(date),w=week(date);DEPTS.forEach(D=>{const m=menuFor(D,w,d);r[D.id]=D.meals.map((_,i)=>({menu:m[i]||"",px:{},pax:"",plan:"",prep:"",iss:"",unit:"",rem:""}))});return r}
+const fpid=date=>"FPID-"+date.replace(/-/g,"");
+function load(date){S.date=date;const rec=LS.get("hm_fp",{})[fpid(date)];S.rows=rec?rec.rows:blank(date);S.taste=rec&&rec.taste?rec.taste:{};render()}
+const num=v=>v===""||isNaN(+v)?null:+v;
+function calc(r){const a=num(r.plan),b=num(r.prep),c=num(r.iss);return{pend:a!==null&&b!==null?a-b:"",bal:b!==null&&c!==null?b-c:(b!==null?b:"")}}
+ 
+function render(){
+  const d=dow(S.date),w=week(S.date);
+  const dt=new Date(S.date+"T00:00:00"),prev=new Date(dt.getTime()-864e5);
+  $("#plan").textContent="Menu for "+DAY[d]+", "+dt.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})+" — prepare on "+DAY[(d+6)%7]+", "+prev.toLocaleDateString("en-GB",{day:"numeric",month:"short"})+". School rotation: Week "+(w+1)+".";
+  $("#fpid").textContent=fpid(S.date);
+  $("#app").innerHTML=DEPTS.map(D=>{const c=colors[D.id]||D.c;
+    const totalPax=S.rows[D.id].reduce((s,r)=>s+(num(r.pax)||0),0);
+    return `<section style="--c:${c}"><div class="hd"><h2>${D.id==="sc"?outlets().map(o=>esc(o.name)).join(" / "):D.name}</h2><span>Total pax ${totalPax}</span><label>Colour<input type="color" data-col="${D.id}" value="${c}"></label>
+    <label class="up">Tasted by<input class="tb" data-tb="${D.id}" value="${esc(S.taste[D.id]||"")}" placeholder="Name of taster"></label>
+    <label class="up">Upload menu${D.id==="sc"?`<select data-upwk="${D.id}"><option value="all">All weeks</option>${[1,2,3,4].map(n=>`<option value="${n-1}"${n-1===w?" selected":""}>Week ${n}</option>`).join("")}</select>`:""}<input type="file" accept=".xlsx,.xls,.csv" data-up="${D.id}"></label>
+    ${(LS.get("hm_menus",{})[D.id])?`<button class="ghost" data-rst="${D.id}">Use built-in menu</button>`:""}</div>
+    <div class="note">${D.note}${D.id==="sc"&&w!==0?" <b>Week "+(w+1)+" menu is not loaded — type it in.</b>":""}</div>
+    <div class="note" id="um-${D.id}">${UM[D.id]||(LS.get("hm_menus",{})[D.id]?"Using uploaded menu: "+LS.get("hm_menus",{})[D.id].name:"Upload an .xlsx or .csv: days (Monday–Sunday) across the top and meals down the side, or days down the side and meals across.")}</div>
+    ${D.id==="sc"?`<div class="note outl">Outlets: ${outlets().map(o=>`<input class="on" data-on="${o.id}" value="${esc(o.name)}" aria-label="Outlet name"><button class="ghost" data-orm="${o.id}" title="Remove outlet">✕</button>`).join(" ")} <button class="ghost" data-oadd="1">+ Add outlet</button> <span>Enter pax for each outlet; Total pax adds them up.</span></div>`:""}
+    <div class="w"><table><tr><th>Meal</th><th>Menu</th>${D.id==="sc"?outlets().map(o=>`<th>${esc(o.name)}</th>`).join("")+"<th>Total pax</th>":"<th>Pax</th>"}<th>Planned qty</th><th>Prepared</th><th>Issued</th><th>Unit</th><th>Pending prep</th><th>Balance</th><th>Remarks</th></tr>
+    ${D.meals.map((m,i)=>{const r=S.rows[D.id][i],k=calc(r);return `<tr data-d="${D.id}" data-i="${i}"><td><b>${m}</b></td>
+    <td><textarea data-f="menu">${r.menu.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</textarea></td>
+    ${D.id==="sc"?outlets().map(o=>`<td><input type="number" min="0" data-f="px" data-ox="${o.id}" value="${(r.px||{})[o.id]||""}"></td>`).join("")+`<td class="a" data-o="tot">${r.pax}</td>`:`<td><input type="number" min="0" data-f="pax" value="${r.pax}"></td>`}
+    <td><input type="number" min="0" step="any" data-f="plan" value="${r.plan}"></td>
+    <td><input type="number" min="0" step="any" data-f="prep" value="${r.prep}"></td>
+    <td><input type="number" min="0" step="any" data-f="iss" value="${r.iss}"></td>
+    <td><input class="u" data-f="unit" value="${r.unit}" placeholder="kg"></td>
+    <td class="a" data-o="pend">${k.pend}</td><td class="a ${k.bal!==""&&k.bal<0?"neg":""}" data-o="bal">${k.bal}</td>
+    <td><input class="t" data-f="rem" value="${r.rem}"></td></tr>`}).join("")}</table></div></section>`}).join("");
+}
+$("#app").addEventListener("change",e=>{
+  const t=e.target;
+  if(t.dataset.on){const O=outlets().map(o=>o.id===t.dataset.on?{id:o.id,name:t.value.trim()||o.name}:o);LS.set("hm_outlets",O);return render()}
+  if(!t.dataset.up||!t.files[0])return;
+  const D=DEPTS.find(x=>x.id===t.dataset.up),sel=t.closest("section").querySelector("[data-upwk]");
+  uploadMenu(D,t.files[0],sel?sel.value:"all")});
+$("#app").addEventListener("click",e=>{
+  const dd=e.target.dataset;
+  if(dd.oadd){const O=outlets().concat([{id:"o"+Date.now(),name:"New outlet"}]);LS.set("hm_outlets",O);return render()}
+  if(dd.orm){const O=outlets();if(O.length<2)return;if(!confirm("Remove this outlet? Its pax on screen will be dropped."))return;
+    LS.set("hm_outlets",O.filter(o=>o.id!==dd.orm));S.rows.sc.forEach(r=>{if(r.px)delete r.px[dd.orm];r.pax=totPx(r)});return render()}
+  const id=e.target.dataset.rst;if(!id||!confirm("Go back to the built-in menu for this department?"))return;
+  const all=LS.get("hm_menus",{});delete all[id];LS.set("hm_menus",all);const D=DEPTS.find(x=>x.id===id);
+  syncMenus(D);UM[id]="Back to the built-in menu.";render()});
+$("#app").addEventListener("input",e=>{
+  const t=e.target;
+  if(t.dataset.tb){S.taste[t.dataset.tb]=t.value;return}
+  if(t.dataset.col){colors[t.dataset.col]=t.value;LS.set("hm_colors",colors);t.closest("section").style.setProperty("--c",t.value);return}
+  const tr=t.closest("tr");if(!tr||!t.dataset.f)return;
+  const r=S.rows[tr.dataset.d][+tr.dataset.i];if(t.dataset.f==="px"){(r.px=r.px||{})[t.dataset.ox]=t.value;r.pax=totPx(r);tr.querySelector("[data-o=tot]").textContent=r.pax}else r[t.dataset.f]=t.value;
+  const k=calc(r);tr.querySelector('[data-o=pend]').textContent=k.pend;
+  const b=tr.querySelector('[data-o=bal]');b.textContent=k.bal;b.classList.toggle("neg",k.bal!==""&&k.bal<0);
+  if(t.dataset.f==="pax"||t.dataset.f==="px"){const sec=t.closest("section");sec.querySelector(".hd span").textContent="Total pax "+S.rows[tr.dataset.d].reduce((s,x)=>s+(num(x.pax)||0),0)}
+});
+function saved(){
+  const all=LS.get("hm_fp",{}),ks=Object.keys(all).sort();
+  $("#saved").innerHTML=ks.length?ks.map(k=>`<button class="ghost" data-load="${all[k].date}">${k} · ${DAY[dow(all[k].date)].slice(0,3)}</button><button class="ghost" data-del="${k}" title="Delete ${k}">✕</button>`).join(""):"<span class=\"sub\">Nothing saved yet. Fill in the pax and quantities, then choose Save production.</span>";
+}
+$("#saved").addEventListener("click",e=>{
+  const t=e.target;
+  if(t.dataset.load){$("#date").value=t.dataset.load;load(t.dataset.load)}
+  if(t.dataset.del&&confirm("Delete "+t.dataset.del+"?")){const a=LS.get("hm_fp",{});delete a[t.dataset.del];LS.set("hm_fp",a);saved()}
+});
+$("#save").onclick=()=>{
+  const a=LS.get("hm_fp",{});a[fpid(S.date)]={date:S.date,savedAt:new Date().toISOString(),rows:S.rows,outlets:outlets(),taste:S.taste};
+  $("#msg").textContent=LS.set("hm_fp",a)?"Saved "+fpid(S.date)+".":"Could not save — browser storage is unavailable.";saved()};
+$("#reset").onclick=()=>{if(confirm("Replace everything on screen with the source menu?")){S.rows=blank(S.date);render()}};
+/*DOCX-START*/
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function itemsOf(D,text){
+  const t=String(text||"").replace(/\r/g,"");
+  const strip=x=>x.replace(/\s*\([^()]*(?:unclear|Handwritten)[^()]*\)/i,"").trim().replace(/^[.\s]+|[.\s]+$/g,"");
+  let a;
+  if(D.id==="hi"&&t.includes("\n"))a=t.split("\n").filter(x=>x.trim()&&!/^\s*(1st|2nd) session/.test(x)&&!/^\s*Note:/.test(x)&&!/^\s*Monthly twice/.test(x));
+  else if(D.id==="sc"&&t.includes(" + "))a=t.split(" + ");
+  else{a=[];let cur="",dp=0;for(const ch of t.replace(/\n/g,",")){if(ch==="(")dp++;if(ch===")")dp--;if(ch===","&&!dp){a.push(cur);cur=""}else cur+=ch}a.push(cur)}
+  return a.map(x=>strip(x.trim())).filter(x=>x&&x!=="Not specified in source")}
+const wRun=(t,o={})=>`<w:r><w:rPr>${o.b?"<w:b/>":""}${o.c?`<w:color w:val="${o.c}"/>`:""}<w:sz w:val="${o.s||20}"/></w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
+const wPara=(inner,o={})=>`<w:p><w:pPr>${o.pb?"<w:pageBreakBefore/>":""}${o.shd?`<w:shd w:val="clear" w:color="auto" w:fill="${o.shd}"/>`:""}<w:spacing w:before="${o.sb||0}" w:after="${o.sa==null?40:o.sa}"/></w:pPr>${inner}</w:p>`;
+const wBox=()=>`<w:sdt><w:sdtPr><w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox></w:sdtPr><w:sdtContent><w:r><w:rPr><w:rFonts w:ascii="MS Gothic" w:eastAsia="MS Gothic" w:hAnsi="MS Gothic" w:hint="eastAsia"/><w:sz w:val="22"/></w:rPr><w:t>\u2610</w:t></w:r></w:sdtContent></w:sdt>`;
+const wCell=(w,inner,fill)=>`<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${fill?`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`:""}</w:tcPr>${inner}</w:tc>`;
+const tintHex=(h,t)=>{const n=[0,2,4].map(i=>parseInt(h.slice(i,i+2),16));return n.map(c=>Math.round(c+(255-c)*t).toString(16).padStart(2,"0")).join("").toUpperCase()};
+function buildDocParts(){
+  const d=dow(S.date),w=week(S.date),dt=new Date(S.date+"T00:00:00"),prev=new Date(dt.getTime()-864e5);
+  const fmt=(x,o)=>x.toLocaleDateString("en-GB",o);
+  const W=[760,1700,1500,6140,1100,1100,1100,800,1200];
+  const H=["Done","Meal","Pax","Menu items (tick when prepared)","Planned","Prepared","Issued","Unit","Remarks"];
+  let body=wPara(wRun("Kitchen production sheet",{b:1,s:36}),{sa:60})+
+    wPara(wRun(DAY[d]+", "+fmt(dt,{day:"numeric",month:"long",year:"numeric"}),{b:1,s:26}),{sa:40})+
+    wPara(wRun("Production ID: "+fpid(S.date)+"     Prepare on: "+DAY[(d+6)%7]+", "+fmt(prev,{day:"numeric",month:"short"})+"     School rotation: Week "+(w+1),{s:20}),{sa:120});
+  DEPTS.forEach((D,di)=>{
+    const col=(colors[D.id]||D.c).replace("#","").toUpperCase();
+    body+=wPara(wRun(D.id==="sc"?outlets().map(o=>o.name).join(" / "):D.name,{b:1,c:"FFFFFF",s:26}),{shd:col,pb:di>0,sb:di>0?0:120,sa:80});
+    let rows=`<w:tr><w:trPr><w:tblHeader/></w:trPr>${H.map((h,i)=>wCell(W[i],wPara(wRun(h,{b:1,s:18})),tintHex(col,.8))).join("")}</w:tr>`;
+    D.meals.forEach((m,i)=>{
+      const r=S.rows[D.id][i],its=itemsOf(D,r.menu);
+      const items=its.length?its.map(x=>wPara(wBox()+wRun("  "+x,{s:20}),{sa:30})).join(""):wPara(wRun("Menu not entered",{s:18,c:"7F7F7F"}));
+      rows+=`<w:tr><w:trPr><w:cantSplit/></w:trPr>${wCell(W[0],wPara(wBox(),{sa:0}))}${wCell(W[1],wPara(wRun(m,{b:1,s:20})))}${[r.pax,null,r.plan,r.prep,r.iss,r.unit,r.rem].map((v,j)=>j===1?wCell(W[3],items):wCell(W[j<1?2:j+2],j<1&&D.id==="sc"?outlets().filter(o=>(r.px||{})[o.id]).map(o=>wPara(wRun(o.name+": "+r.px[o.id],{s:16}),{sa:10})).join("")+wPara(wRun("Total "+(v||""),{b:1,s:18})):wPara(wRun(v||"",{s:20})))).join("")}</w:tr>`;
+    });
+    body+=`<w:tbl><w:tblPr><w:tblW w:w="${W.reduce((a,b)=>a+b)}" w:type="dxa"/><w:tblBorders>${["top","left","bottom","right","insideH","insideV"].map(s=>`<w:${s} w:val="single" w:sz="4" w:space="0" w:color="A6A6A6"/>`).join("")}</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>${W.map(x=>`<w:gridCol w:w="${x}"/>`).join("")}</w:tblGrid>${rows}</w:tbl>`+
+      wPara(wRun("Tasted by: "+(S.taste[D.id]||"______________")+"     Prepared by: ______________     Checked by: ______________     Issued by: ______________",{s:18}),{sb:160});
+  });
+  const NS='xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14"';
+  const X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  return{
+    "[Content_Types].xml":X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
+    "_rels/.rels":X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+    "word/_rels/document.xml.rels":X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+    "word/styles.xml":X+`<w:styles ${NS}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:sz w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="40" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults></w:styles>`,
+    "word/document.xml":X+`<w:document ${NS}><w:body>${body}<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="400" w:footer="400" w:gutter="0"/></w:sectPr></w:body></w:document>`};
+}
+async function exportDocx(){
+  const m=$("#msg");
+  try{
+    if(!window.JSZip){m.textContent="The Word export library could not load. Check your connection and reload.";return}
+    const z=new JSZip(),parts=buildDocParts();
+    Object.keys(parts).forEach(k=>z.file(k,parts[k]));
+    const blob=await z.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+    await saveFile("Production-Sheet-"+fpid(S.date)+".docx",blob);
+    m.textContent="Word sheet ready for "+S.date+".";
+  }catch(e){m.textContent=e&&e.code==="declined"?"Export cancelled.":"Export failed: "+(e&&e.message||"unknown error")}
+}
+/*DOCX-END*/
+const LOGO="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";
+function tasteForms(){
+  const out=[];
+  DEPTS.forEach(D=>{
+    const label=D.id==="sc"?outlets().map(o=>o.name).join(" / "):D.name,its=[];
+    D.meals.forEach((m,i)=>itemsOf(D,S.rows[D.id][i].menu).forEach(x=>its.push(m.replace(/\s*\(.*?\)/,"")+" \u2013 "+x)));
+    for(let j=0;j<its.length;j+=6)out.push({label,taster:S.taste[D.id]||"",items:its.slice(j,j+6)});
+  });
+  return out}
+function buildTasteParts(forms){
+  const W1=[2400,7000,2800,3598],W2=[8000,7798],W3=[650,3400,1000,1100,1000,800,1300,1100,1100,2700,1648];
+  const sum=a=>a.reduce((x,y)=>x+y,0),dateStr=S.date.split("-").reverse().join("-");
+  const tp=(inner,o={})=>`<w:p><w:pPr><w:spacing w:before="${o.sb||0}" w:after="${o.sa||0}"/>${o.jc?`<w:jc w:val="${o.jc}"/>`:""}</w:pPr>${inner}</w:p>`;
+  const tc=(w,inner,o={})=>`<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${o.span?`<w:gridSpan w:val="${o.span}"/>`:""}${o.vm?`<w:vMerge${o.vm==="r"?' w:val="restart"':""}/>`:""}<w:vAlign w:val="center"/></w:tcPr>${inner}</w:tc>`;
+  const tr=(h,cells)=>`<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="${h}" w:hRule="atLeast"/></w:trPr>${cells}</w:tr>`;
+  const tbl=(grid,rows)=>`<w:tbl><w:tblPr><w:tblW w:w="${sum(grid)}" w:type="dxa"/><w:tblBorders>${["top","left","bottom","right","insideH","insideV"].map(s=>`<w:${s} w:val="single" w:sz="8" w:space="0" w:color="000000"/>`).join("")}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="70" w:type="dxa"/><w:right w:w="70" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${grid.map(x=>`<w:gridCol w:w="${x}"/>`).join("")}</w:tblGrid>${rows}</w:tbl>`;
+  const sp=(pb,line)=>`<w:p><w:pPr>${pb?"<w:pageBreakBefore/>":""}<w:spacing w:before="0" w:after="0" w:line="${line}" w:lineRule="exact"/></w:pPr></w:p>`;
+  const A='xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+  const img=`<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="1296000" cy="803520"/><wp:docPr id="1" name="Logo"/><wp:cNvGraphicFramePr><a:graphicFrameLocks ${A} noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic ${A}><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="1" name="logo.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1296000" cy="803520"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+  const SCALE="SCALE: 1- WORST, 2-SUPER BAD, 3-REALLY BAD, 4-BAD, 5-MAY BE GOOD OR MAYNOT BE, 6-JUST LITTLE GOOD, 7-GOOD, 8-REALLY GOOD, 9-SUPER GOOD, 10-EXCELLENT.";
+  const HD=["SI NO","Tasted sample Name","BATCH NO","APPEARANCE","FLAVOUR","TASTE","COOKED/BOILED PROPERLY","OVERALL TASTE","TASTED TIME","Remarks","SIGN."];
+  let body="";
+  forms.forEach((f,k)=>{
+    const info=[["Doc.No","MAXIMUMS/HSEQ-01"],["Issue status",":01"],["Issue date","01-07-26"],["Revision status",":00"],["Revision date",":00"],["Page No.",(k+1)+" OF "+forms.length]];
+    body+=sp(k>0&&k%2===0,k%2===0?20:200);
+    body+=tbl(W1,info.map((x,i)=>tr(250,
+      (i===0?tc(W1[0],tp(img,{jc:"center"}),{vm:"r"}):tc(W1[0],tp(""),{vm:"c"}))+
+      (i===0?tc(W1[1],tp(wRun("MAXIMUMS - Food & Beverage",{b:1,c:"4B0F8F",s:40}),{jc:"center"}),{vm:"r"}):i===3?tc(W1[1],tp(wRun("TASTE AND TEXTURE REPORT",{b:1,s:28}),{jc:"center"}),{vm:"r"}):tc(W1[1],tp(""),{vm:"c"}))+
+      tc(W1[2],tp(wRun(x[0],{s:18})))+tc(W1[3],tp(wRun(x[1],{s:18}),{jc:"center"})))).join(""))+sp(0,20);
+    body+=tbl(W2,
+      tr(300,tc(W2[0],tp(wRun("NAME OF THE PANELIST: "+(f.taster||""),{b:1,s:20})))+tc(W2[1],tp(wRun(SCALE,{b:1,c:"0033CC",s:15})),{vm:"r"}))+
+      tr(300,tc(W2[0],tp(wRun("DATE : "+dateStr,{b:1,s:20})+wRun("      DEPARTMENT: "+f.label,{b:1,s:18})))+tc(W2[1],tp(""),{vm:"c"})))+sp(0,20);
+    let rows=tr(520,HD.map((h,i)=>tc(W3[i],tp(wRun(h,{b:1,s:i===1||i===9||i===10?20:15}),{jc:"center"}))).join(""));
+    for(let i=0;i<6;i++)rows+=tr(330,W3.map((w,j)=>tc(w,j===0?tp(wRun(String(i+1),{s:20}),{jc:"center"}):j===1?tp(wRun(f.items[i]||"",{s:18})):tp(""))).join(""));
+    rows+=tr(330,tc(sum(W3),tp(wRun("Remarks:",{s:20})),{span:11}));
+    body+=tbl(W3,rows);
+  });
+  body+=sp(0,20);
+  const NS='xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
+  const X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  return{
+    "[Content_Types].xml":X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
+    "_rels/.rels":X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+    "word/_rels/document.xml.rels":X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/></Relationships>',
+    "word/styles.xml":X+`<w:styles ${NS}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults></w:styles>`,
+    "word/document.xml":X+`<w:document ${NS}><w:body>${body}<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="400" w:right="520" w:bottom="400" w:left="520" w:header="200" w:footer="200" w:gutter="0"/></w:sectPr></w:body></w:document>`};
+}
+async function exportTaste(){
+  const m=$("#msg");
+  try{
+    const forms=tasteForms();
+    if(!forms.length){m.textContent="There are no menu items for "+S.date+" to build a tasting sheet from.";return}
+    if(!window.JSZip){m.textContent="The Word export library could not load. Check your connection and reload.";return}
+    const z=new JSZip(),parts=buildTasteParts(forms);
+    Object.keys(parts).forEach(k=>z.file(k,parts[k]));
+    z.file("word/media/logo.png",Uint8Array.from(atob(LOGO),c=>c.charCodeAt(0)));
+    const blob=await z.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+    await saveFile("Tasting-Sheet-"+S.date+".docx",blob);
+    m.textContent="Tasting sheet ready for "+S.date+" ("+forms.length+" forms).";
+  }catch(e){m.textContent=e&&e.code==="declined"?"Export cancelled.":"Export failed: "+(e&&e.message||"unknown error")}
+}
+async function saveFile(name,blob){
+  const dl=window.claude&&claude.use?await claude.use("downloads"):null;
+  if(dl){await dl.save({filename:name,data:blob});return}
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+const XH=["FPID","Date","Day","Department","Meal","Menu","Total pax","Outlet pax","Planned qty","Prepared qty","Issued qty","Unit","Pending prep","Balance","Remarks","Tasted by"];
+function flat(date,rec){
+  const rows=[],pxl=[],day=DAY[dow(date)],O=rec.outlets||OUT0;
+  DEPTS.forEach(D=>(rec.rows[D.id]||[]).forEach((r,i)=>{
+    const k=calc(r),px=r.px||{};
+    const ol=D.id==="sc"?O.filter(o=>px[o.id]!==undefined&&px[o.id]!=="").map(o=>{pxl.push([date,day,D.name,D.meals[i],o.name,num(px[o.id])]);return o.name+" "+px[o.id]}).join("; "):"";
+    rows.push([fpid(date),date,day,D.name,D.meals[i],r.menu,num(r.pax),ol,num(r.plan),num(r.prep),num(r.iss),r.unit||"",k.pend===""?null:k.pend,k.bal===""?null:k.bal,r.rem||"",(rec.taste||{})[D.id]||""])}));
+  return{rows,pxl}}
+function addSheet(wb,name,aoa,wd){const ws=XLSX.utils.aoa_to_sheet(aoa);ws["!cols"]=wd.map(w=>({wch:w}));ws["!freeze"]={xSplit:0,ySplit:1};XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31))}
+async function exportXlsx(kind){
+  const m=$("#msg");
+  try{
+    if(!window.XLSX){m.textContent="The Excel library could not load. Check your connection and reload.";return}
+    let recs,label;
+    if(kind==="day"){recs=[[S.date,{rows:S.rows,outlets:outlets(),taste:S.taste}]];label=S.date}
+    else{
+      label=kind==="month"?S.date.slice(0,7):S.date.slice(0,4);
+      const all=LS.get("hm_fp",{});
+      recs=Object.keys(all).map(k=>[all[k].date,all[k]]).filter(x=>x[0].startsWith(label)).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0);
+      if(!recs.length){m.textContent="No saved production records for "+label+". Save production for those dates first.";return}}
+    const R=[],P=[];recs.forEach(([d,rec])=>{const f=flat(d,rec);R.push(...f.rows);P.push(...f.pxl)});
+    const wb=XLSX.utils.book_new();
+    addSheet(wb,kind==="day"?"Day "+label:"Records",[XH,...R],[16,12,11,16,18,70,10,40,11,11,11,8,12,10,24,22]);
+    addSheet(wb,"Outlet pax",[["Date","Day","Department","Meal","Outlet","Pax"],...P],[12,11,16,18,20,8]);
+    if(kind!=="day"){
+      const dep=new Map(),qty=new Map(),mon=new Map();
+      R.forEach(r=>{
+        const dk=r[3];const e=dep.get(dk)||{days:new Set(),pax:0};e.days.add(r[1]);e.pax+=r[6]||0;dep.set(dk,e);
+        const mk=r[1].slice(0,7)+"|"+dk;const q=mon.get(mk)||{days:new Set(),pax:0};q.days.add(r[1]);q.pax+=r[6]||0;mon.set(mk,q);
+        if(r[11]){const uk=dk+"|"+r[11];const u=qty.get(uk)||{p:0,r:0,i:0};u.p+=r[8]||0;u.r+=r[9]||0;u.i+=r[10]||0;qty.set(uk,u)}});
+      addSheet(wb,"Dept summary",[["Department","Days recorded","Total pax (all meals)"],...[...dep].map(([k,v])=>[k,v.days.size,v.pax])],[18,14,20]);
+      if(kind==="year")addSheet(wb,"Monthly summary",[["Month","Department","Days recorded","Total pax (all meals)"],...[...mon].sort((a,b)=>a[0]<b[0]?-1:1).map(([k,v])=>{const s=k.split("|");return[s[0],s[1],v.days.size,v.pax]})],[10,18,14,20]);
+      addSheet(wb,"Quantity totals",[["Department","Unit","Planned","Prepared","Issued","Balance (prepared - issued)"],...[...qty].map(([k,v])=>{const s=k.split("|");return[s[0],s[1],v.p,v.r,v.i,v.r-v.i]})],[18,8,12,12,12,22]);
+    }
+    const buf=XLSX.write(wb,{type:"array",bookType:"xlsx"});
+    await saveFile("Production-"+(kind==="day"?"Day":kind==="month"?"Month":"Year")+"-"+label+".xlsx",new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+    m.textContent="Excel "+kind+" export ready ("+recs.length+" "+(recs.length===1?"day":"days")+").";
+  }catch(e){m.textContent=e&&e.code==="declined"?"Export cancelled.":"Export failed: "+(e&&e.message||"unknown error")}
+}
+ 
+$("#docx").onclick=exportDocx;$("#tt").onclick=exportTaste;$("#xd").onclick=()=>exportXlsx("day");$("#xm").onclick=()=>exportXlsx("month");$("#xy").onclick=()=>exportXlsx("year");
+$("#date").onchange=e=>e.target.value&&load(e.target.value);
+const tm=ymd(new Date(Date.now()+864e5));$("#date").value=tm;load(tm);saved();
+</script>
+</body>
+</html>
